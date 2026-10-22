@@ -20,6 +20,18 @@ export async function runMigrations(): Promise<void> {
   await client.execute('PRAGMA busy_timeout = 5000;');
   await client.execute('PRAGMA synchronous = NORMAL;');
 
+    await client.execute(`
+    CREATE TABLE IF NOT EXISTS mock_accounts (
+      account_id TEXT PRIMARY KEY,
+      balance REAL NOT NULL
+    );
+  `);
+
+  await client.execute(`
+    INSERT OR IGNORE INTO mock_accounts (account_id, balance)
+    VALUES ('ACC_1001', 1000.0), ('ACC_2002', 200.0);
+  `);
+
   // Nonces table for HMAC capability replay prevention
   await client.execute(`
     CREATE TABLE IF NOT EXISTS nonces (

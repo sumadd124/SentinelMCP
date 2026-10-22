@@ -1,9 +1,12 @@
 import Fastify, { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import { config } from "./config.js";
-import { runMigrations } from "./ledger/database.js";
+import { db, runMigrations } from "./ledger/database.js";
 import { broadcaster, logger } from "./telemetry/events.js";
 import "./tools/handlers.js";
+import { CapabilityTokenManager } from "./security/capability.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createMcpServer } from "./mcp.js";
 
 export const server: FastifyInstance = Fastify({
   logger: false,
@@ -22,6 +25,98 @@ async function registerRoutesAndPlugins(app: FastifyInstance): Promise<void> {
     return { status: "ok", timestamp: new Date().toISOString() };
   });
 
+     // Read persisted security audit events
+  server.get("/api/audit/events", async (request) => {
+    const query = request.query as { limit?: string };
+    const parsedLimit = Number(query.limit ?? 50);
+    const limit = Number.isInteger(parsedLimit)
+      ? Math.min(Math.max(parsedLimit, 1), 100)
+      : 50;
+
+    const result = await db.execute({
+      sql: `SELECT id, event_type, tool_name, verdict, reason, timestamp
+            FROM audit_events
+            ORDER BY id DESC
+            LIMIT ?`,
+      args: [limit],
+    });
+
+    return { events: result.rows };
+  });
+
+    server.post("/api/capability-tokens", async (request, reply) => {
+    const body = request.body as {
+      action?: string;
+      scope?: string;
+      maxAmount?: number;
+    } | null;
+
+    const allowedActions = [
+      "execute_transfer",
+      "delete_record",
+      "send_email",
+    ];
+
+    if (
+      !body ||
+      typeof body.action !== "string" ||
+      !allowedActions.includes(body.action) ||
+      typeof body.scope !== "string" ||
+      body.scope.trim().length === 0 ||
+      body.scope.length > 200 ||
+      (body.maxAmount !== undefined &&
+        (!Number.isFinite(body.maxAmount) || body.maxAmount < 0))
+    ) {
+      return reply.code(400).send({ error: "Invalid token request" });
+    }
+
+    const token = CapabilityTokenManager.issue({
+      action: body.action,
+      scope: body.scope,
+      expiresInSeconds: 300,
+      maxAmount: body.maxAmount,
+    });
+
+    return {
+      token,
+      expiresInSeconds: 300,
+      action: body.action,
+      scope: body.scope,
+    };
+  });
+
+  // MCP Streamable HTTP endpoint
+  server.route({
+    method: ["GET", "POST", "DELETE"],
+    url: "/mcp",
+    handler: async (request, reply) => {
+      const mcp = createMcpServer();
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+      });
+
+      reply.hijack();
+
+      try {
+        await mcp.connect(transport);
+        await transport.handleRequest(request.raw, reply.raw, request.body);
+      } catch (error) {
+        logger.error(
+          `MCP request failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+
+        if (!reply.raw.headersSent) {
+          reply.raw.statusCode = 500;
+          reply.raw.setHeader("Content-Type", "application/json");
+          reply.raw.end(JSON.stringify({ error: "MCP request failed" }));
+        } else if (!reply.raw.writableEnded) {
+          reply.raw.end();
+        }
+      } finally {
+        await mcp.close().catch(() => undefined);
+      }
+    },
+  });
   // 3. Telemetry SSE Endpoint
   app.get("/sse", async (request, reply) => {
     // Hijack Fastify's response lifecycle to handle raw streaming
