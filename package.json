@@ -1,19 +1,28 @@
 {
   "name": "sentinelmcp",
   "version": "1.0.0",
-  "description": "Locally runnable enterprise-grade security gateway and transaction monitor for MCP",
+  "description": "Enterprise Security Gateway & Transaction Monitor for Model Context Protocol",
   "type": "module",
+  "bin": {
+    "sentinelmcp": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
+    "build:gateway": "tsc -p tsconfig.json",
+    "build:dashboard": "npm run build --workspace=dashboard",
+    "build": "npm run build:gateway && npm run build:dashboard",
     "dev:gateway": "tsx watch src/index.ts",
     "dev:dashboard": "npm run dev --workspace=dashboard",
     "dev": "concurrently -n \"gateway,dashboard\" -c \"blue.bold,magenta.bold\" \"npm run dev:gateway\" \"npm run dev:dashboard\"",
-    "build:gateway": "tsc --noEmit",
-    "build:dashboard": "npm run build --workspace=dashboard",
-    "build": "npm run build:gateway && npm run build:dashboard",
-    "test": "vitest run"
+    "stdio": "tsx src/transports/stdio-runner.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "start": "node dist/cli.js"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1155.0",
