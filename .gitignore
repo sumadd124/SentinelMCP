@@ -1,5 +1,7 @@
 @"
 node_modules/
+packages/dashboard/.next/
+packages/dashboard/out/
 dist/
 .env
 data/*.db*
