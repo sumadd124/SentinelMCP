@@ -13,26 +13,18 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SentinelMCP Monitor",
-  description: "Enterprise Security Gateway & Transaction Monitor for Model Context Protocol",
+  title: "SentinelMCP — Security Command Center",
+  description:
+    "Real-time MCP security monitoring, zero-trust guardrails, and transaction intelligence.",
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body
-        className="min-h-full flex flex-col bg-slate-950 text-slate-100"
-        suppressHydrationWarning
-      >
-        {children}
-      </body>
+      <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );
 }

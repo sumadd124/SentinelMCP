@@ -1,115 +1,376 @@
+
 "use client";
 
 import { useTelemetry } from "../hooks/useTelemetry";
 import { TokenGenerator } from "../components/TokenGenerator";
-import type { TelemetryEvent } from "../types/telemetry";
-import { Shield, ShieldAlert, ShieldCheck, Activity, Trash2, Radio } from "lucide-react";
+import {
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Activity,
+  Trash2,
+  Radio,
+  ArrowUpRight,
+  Zap,
+  LockKeyhole,
+  RotateCcw,
+  CircleCheck,
+  Clock3,
+} from "lucide-react";
 
 export default function DashboardPage() {
   const { events, isConnected, clearEvents } = useTelemetry();
 
+  const allowed = events.filter((e) => e.verdict === "ALLOWED").length;
+  const blocked = events.filter(
+    (e) => e.verdict === "BLOCKED" || e.type === "SAGA_ROLLBACK_INITIATED"
+  ).length;
+  const rollbacks = events.filter(
+    (e) => e.type === "SAGA_ROLLBACK_INITIATED"
+  ).length;
+
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
-        
-        {/* Header Bar */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-6">
-          <div>
-            <div className="flex items-center gap-3">
-              <Shield className="w-8 h-8 text-indigo-500" />
-              <h1 className="text-2xl font-bold tracking-tight">SentinelMCP Monitor</h1>
+    <main className="min-h-screen bg-[#f7f8fc] px-4 py-5 text-[#172033] sm:px-7 lg:px-10 lg:py-8">
+      <div className="mx-auto max-w-[1440px] space-y-8">
+        <header className="flex flex-col justify-between gap-5 border-b border-[#e7e9f0] pb-7 sm:flex-row sm:items-center">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#7047eb] text-white shadow-lg shadow-violet-200">
+              <Shield className="h-6 w-6" strokeWidth={2.2} />
             </div>
-            <p className="text-slate-400 text-sm mt-1">
-              Real-time MCP tool inspection, zero-trust guardrails, and saga ledger.
-            </p>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+                Sentinel<span className="text-[#7047eb]">MCP</span>
+              </h1>
+              <p className="mt-1 text-sm text-[#697386]">
+                Security command center <span className="mx-1.5">/</span> Overview
+              </p>
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-800 bg-slate-900 text-xs">
-              <Radio className={`w-3.5 h-3.5 ${isConnected ? "text-emerald-400 animate-pulse" : "text-rose-500"}`} />
-              <span className="font-mono text-slate-300">
-                {isConnected ? "GATEWAY CONNECTED (SSE)" : "GATEWAY DISCONNECTED"}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2 rounded-full border border-[#e7e9f0] bg-white px-4 py-2.5 shadow-sm">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  isConnected ? "animate-pulse bg-emerald-500" : "bg-rose-500"
+                }`}
+              />
+              <span className="text-xs font-semibold tracking-wide text-[#465066]">
+                {isConnected ? "GATEWAY CONNECTED" : "GATEWAY DISCONNECTED"}
               </span>
             </div>
 
             <button
               onClick={clearEvents}
-              className="p-2 border border-slate-800 bg-slate-900 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-200 transition cursor-pointer"
               title="Clear event history"
+              className="flex items-center gap-2 rounded-xl border border-[#e7e9f0] bg-white px-3.5 py-2.5 text-sm font-medium text-[#697386] shadow-sm transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Clear logs</span>
             </button>
           </div>
         </header>
 
-        {/* Studio Utilities */}
-        <TokenGenerator />
-
-        {/* Live Event Stream */}
-        <section className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-          <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/60">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-indigo-400" />
-              <h2 className="font-semibold text-sm tracking-wide uppercase text-slate-300">
-                Live Transaction & Guardrail Stream
-              </h2>
-            </div>
-            <span className="text-xs font-mono text-slate-500">{events.length} events logged</span>
+        <section className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-[#7047eb]">
+              Operations overview
+            </p>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+              Your agents. Under control.
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[#697386] sm:text-base">
+              Monitor tool calls, enforce zero-trust policies, and inspect
+              transaction activity in real time.
+            </p>
           </div>
-
-          <div className="divide-y divide-slate-800/60 max-h-[600px] overflow-y-auto font-mono text-xs">
-            {events.length === 0 ? (
-              <div className="p-8 text-center text-slate-500 font-sans">
-                No telemetry events intercepted yet. Invoke an MCP tool through Claude or an integration test to observe traffic.
-              </div>
-            ) : (
-              events.map((evt, idx) => (
-                <div key={idx} className="p-4 hover:bg-slate-800/30 transition flex flex-col md:flex-row md:items-center justify-between gap-3">
-                  <div className="flex items-start md:items-center gap-3">
-                    {evt.verdict === "BLOCKED" || evt.type === "SAGA_ROLLBACK_INITIATED" ? (
-                      <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0 mt-0.5 md:mt-0" />
-                    ) : (
-                      <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5 md:mt-0" />
-                    )}
-
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-slate-200">{evt.type}</span>
-                        {evt.toolName && (
-                          <span className="px-2 py-0.5 bg-slate-800 text-indigo-300 rounded text-[11px]">
-                            {evt.toolName}
-                          </span>
-                        )}
-                        {evt.verdict && (
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            evt.verdict === "ALLOWED"
-                              ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
-                              : "bg-rose-950 text-rose-400 border border-rose-800"
-                          }`}>
-                            {evt.verdict}
-                          </span>
-                        )}
-                      </div>
-
-                      {evt.reason && (
-                        <p className="text-rose-400 mt-1 font-sans text-xs">{evt.reason}</p>
-                      )}
-                      {evt.transactionId && (
-                        <p className="text-slate-500 text-[10px] mt-0.5">TX: {evt.transactionId}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <span className="text-slate-500 text-[11px] shrink-0">
-                    {new Date(evt.timestamp).toLocaleTimeString()}
-                  </span>
-                </div>
-              ))
-            )}
+          <div className="flex items-center gap-2 pb-1 text-xs text-[#697386]">
+            <Clock3 className="h-4 w-4" />
+            Live telemetry
           </div>
         </section>
 
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Events observed"
+            value={events.length}
+            detail="Events received in this session"
+            icon={<Activity className="h-5 w-5" />}
+            accent="violet"
+          />
+          <MetricCard
+            label="Requests allowed"
+            value={allowed}
+            detail="Passed security checks"
+            icon={<ShieldCheck className="h-5 w-5" />}
+            accent="green"
+          />
+          <MetricCard
+            label="Requests blocked"
+            value={blocked}
+            detail="Blocked or rollback-triggering events"
+            icon={<LockKeyhole className="h-5 w-5" />}
+            accent="rose"
+          />
+          <MetricCard
+            label="Saga rollbacks"
+            value={rollbacks}
+            detail="Rollback events observed"
+            icon={<RotateCcw className="h-5 w-5" />}
+            accent="amber"
+          />
+        </section>
+
+        <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
+          <div className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white shadow-sm xl:col-span-2">
+            <div className="flex flex-col justify-between gap-3 border-b border-[#edf0f5] px-5 py-5 sm:flex-row sm:items-center sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0ebff] text-[#7047eb]">
+                  <Radio className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold tracking-tight">Live security stream</h3>
+                  <p className="mt-1 text-xs text-[#8790a2]">
+                    Real-time gateway decisions and transaction events
+                  </p>
+                </div>
+              </div>
+              <span className="w-fit rounded-lg bg-[#f5f6fa] px-3 py-1.5 text-xs font-semibold text-[#697386]">
+                {events.length} events
+              </span>
+            </div>
+
+            <div className="max-h-[480px] overflow-auto">
+              {events.length === 0 ? (
+                <div className="flex min-h-[260px] flex-col items-center justify-center px-6 py-12 text-center">
+                  <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#f0ebff] text-[#7047eb]">
+                    <Activity className="h-7 w-7" />
+                  </div>
+                  <h4 className="font-semibold">Waiting for gateway activity</h4>
+                  <p className="mt-2 max-w-sm text-sm leading-6 text-[#8790a2]">
+                    Invoke an MCP tool to see security decisions appear here.
+                    New events will show up when the telemetry stream delivers them.
+                  </p>
+                  <div className="mt-4 flex items-center gap-2 text-xs font-medium text-[#697386]">
+                    <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500" : "bg-rose-500"}`} />
+                    {isConnected ? "Listening for events" : "Waiting for connection"}
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y divide-[#f0f1f6]">
+                  {events.map((evt, idx) => (
+                    <div
+                      key={`${evt.timestamp}-${idx}`}
+                      className="flex flex-col justify-between gap-3 px-5 py-4 transition hover:bg-[#fafaff] sm:flex-row sm:items-center sm:px-6"
+                    >
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div
+                          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                            evt.verdict === "BLOCKED" ||
+                            evt.type === "SAGA_ROLLBACK_INITIATED"
+                              ? "bg-rose-50 text-rose-600"
+                              : "bg-emerald-50 text-emerald-600"
+                          }`}
+                        >
+                          {evt.verdict === "BLOCKED" ||
+                          evt.type === "SAGA_ROLLBACK_INITIATED" ? (
+                            <ShieldAlert className="h-4 w-4" />
+                          ) : (
+                            <ShieldCheck className="h-4 w-4" />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="break-all text-sm font-semibold text-[#263148]">
+                              {evt.type}
+                            </span>
+                            {evt.verdict && (
+                              <span
+                                className={`rounded-md border px-2 py-1 text-[10px] font-bold tracking-wide ${
+                                  evt.verdict === "ALLOWED"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : "border-rose-200 bg-rose-50 text-rose-700"
+                                }`}
+                              >
+                                {evt.verdict}
+                              </span>
+                            )}
+                          </div>
+                          {evt.toolName && (
+                            <p className="mt-1 text-xs text-[#7047eb]">
+                              Tool · {evt.toolName}
+                            </p>
+                          )}
+                          {evt.reason && (
+                            <p className="mt-1 break-words text-xs leading-5 text-rose-600">
+                              {evt.reason}
+                            </p>
+                          )}
+                          {evt.transactionId && (
+                            <p className="mt-1 break-all font-mono text-[10px] text-[#8790a2]">
+                              TX · {evt.transactionId}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <time className="shrink-0 pl-12 text-xs text-[#8790a2] sm:pl-0">
+                        {new Date(evt.timestamp).toLocaleTimeString()}
+                      </time>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between border-t border-[#edf0f5] bg-[#fcfcfe] px-5 py-3 sm:px-6">
+              <span className="text-xs text-[#8790a2]">
+                Source: gateway telemetry
+              </span>
+              <span className="flex items-center gap-1.5 text-xs font-semibold text-[#697386]">
+                <span className={`h-1.5 w-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-rose-500"}`} />
+                {isConnected ? "Stream active" : "Stream offline"}
+              </span>
+            </div>
+          </div>
+
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-[#e7e9f0] bg-white p-5 shadow-sm sm:p-6">
+              <div className="mb-5 flex items-start justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.15em] text-[#7047eb]">
+                    Protection layer
+                  </p>
+                  <h3 className="mt-2 text-lg font-bold tracking-tight">
+                    Zero-trust gateway
+                  </h3>
+                </div>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0ebff] text-[#7047eb]">
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 rounded-xl border border-[#e9e2ff] bg-[#faf8ff] p-4">
+                <div className={`h-2.5 w-2.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-amber-500"}`} />
+                <div>
+                  <p className="text-sm font-semibold">
+                    {isConnected ? "Telemetry connected" : "Connection pending"}
+                  </p>
+                  <p className="mt-1 text-xs text-[#697386]">
+                    {isConnected
+                      ? "Receiving gateway status"
+                      : "Check the gateway server"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 space-y-3">
+                <FeatureRow icon={<LockKeyhole />} label="Capability verification" />
+                <FeatureRow icon={<ShieldAlert />} label="Policy guardrails" />
+                <FeatureRow icon={<RotateCcw />} label="Saga compensation" />
+              </div>
+              <p className="mt-4 text-[11px] leading-5 text-[#8790a2]">
+                Protection features are listed from the project design; verify
+                their live state through gateway events and tests.
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-[#201448] p-5 text-white shadow-lg shadow-violet-100 sm:p-6">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-[0.16em] text-violet-200">
+                  Security insight
+                </span>
+                <Zap className="h-5 w-5 text-violet-300" />
+              </div>
+              <p className="mt-4 text-2xl font-bold tracking-tight">
+                Every tool call matters.
+              </p>
+              <p className="mt-2 text-sm leading-6 text-violet-200/80">
+                Inspect decisions, track transactions, and test capability
+                authorization from one workspace.
+              </p>
+              <div className="mt-5 flex items-center gap-2 text-xs font-semibold text-violet-200">
+                <CircleCheck className="h-4 w-4" />
+                Built for observable AI security
+                <ArrowUpRight className="ml-auto h-4 w-4" />
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white shadow-sm">
+          <div className="border-b border-[#edf0f5] px-5 py-5 sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#f0ebff] text-[#7047eb]">
+                <LockKeyhole className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold tracking-tight">Capability token studio</h3>
+                <p className="mt-1 text-xs text-[#8790a2]">
+                  Generate signed tokens for authorized test requests
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="p-4 sm:p-6">
+            <TokenGenerator />
+          </div>
+        </section>
+
+        <footer className="flex flex-col justify-between gap-2 border-t border-[#e7e9f0] pt-5 text-xs text-[#8790a2] sm:flex-row">
+          <span>SentinelMCP · Security command center</span>
+          <span>Real-time monitoring for Model Context Protocol agents</span>
+        </footer>
       </div>
     </main>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+  icon: React.ReactNode;
+  accent: "violet" | "green" | "rose" | "amber";
+}) {
+  const styles = {
+    violet: "bg-[#f0ebff] text-[#7047eb]",
+    green: "bg-emerald-50 text-emerald-600",
+    rose: "bg-rose-50 text-rose-600",
+    amber: "bg-amber-50 text-amber-600",
+  };
+
+  return (
+    <div className="group rounded-2xl border border-[#e7e9f0] bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-[#d9d0ff] hover:shadow-md sm:p-6">
+      <div className="flex items-start justify-between">
+        <p className="text-sm font-medium text-[#697386]">{label}</p>
+        <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${styles[accent]}`}>
+          {icon}
+        </div>
+      </div>
+      <p className="mt-5 text-3xl font-bold tracking-tight tabular-nums">{value}</p>
+      <p className="mt-2 text-xs leading-5 text-[#8790a2]">{detail}</p>
+    </div>
+  );
+}
+
+function FeatureRow({
+  icon,
+  label,
+}: {
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 text-sm text-[#465066]">
+      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#f5f6fa] text-[#7047eb]">
+        {icon}
+      </span>
+      <span className="font-medium">{label}</span>
+      <CircleCheck className="ml-auto h-4 w-4 text-emerald-500" />
+    </div>
   );
 }
