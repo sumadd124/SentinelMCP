@@ -1,37 +1,35 @@
 {
   "name": "sentinelmcp",
   "version": "1.0.0",
-  "description": "Zero-trust Model Context Protocol (MCP) Security Gateway with Bedrock Guardrails and Saga Rollback",
-  "main": "dist/index.js",
+  "description": "Locally runnable enterprise-grade security gateway and transaction monitor for MCP",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc",
-    "typecheck": "tsc --noEmit",
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "dev:gateway": "tsx watch src/index.ts",
+    "dev:dashboard": "npm run dev --workspace=dashboard",
+    "dev": "concurrently -n \"gateway,dashboard\" -c \"blue.bold,magenta.bold\" \"npm run dev:gateway\" \"npm run dev:dashboard\"",
+    "build:gateway": "tsc --noEmit",
+    "build:dashboard": "npm run build --workspace=dashboard",
+    "build": "npm run build:gateway && npm run build:dashboard",
+    "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.750.0",
-    "@fastify/cors": "^10.1.0",
-    "@libsql/client": "^0.18.0",
-    "@modelcontextprotocol/sdk": "^1.6.0",
-    "dotenv": "^16.4.7",
+    "@aws-sdk/client-bedrock-runtime": "^3.1155.0",
+    "@fastify/cors": "^10.0.2",
+    "@libsql/client": "^0.14.0",
+    "@modelcontextprotocol/sdk": "^1.6.1",
+    "dotenv": "^18.0.8",
     "fastify": "^5.2.1",
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/node": "^22.13.4",
+    "@types/dotenv": "^6.1.1",
+    "@types/node": "^22.13.9",
+    "concurrently": "^9.1.2",
     "tsx": "^4.19.3",
-    "typescript": "^5.7.3",
-    "vitest": "^3.0.5"
-  },
-  "engines": {
-    "node": ">=20.0.0"
-  },
-  "allowScripts": {
-    "better-sqlite3@13.0.3": true,
-    "esbuild@0.28.2": true
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.7"
   }
 }
