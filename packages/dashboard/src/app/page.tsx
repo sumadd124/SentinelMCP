@@ -1,6 +1,10 @@
 
 "use client";
 
+import { RiskIntelligence } from "../components/RiskIntelligence";
+import { ForensicsTimeline } from "../components/ForensicsTimeline";
+import { SecurityAnalytics } from "../components/SecurityAnalytics";
+import { AttackLab } from "../components/AttackLab";
 import { useTelemetry } from "../hooks/useTelemetry";
 import { TokenGenerator } from "../components/TokenGenerator";
 import {
@@ -313,6 +317,31 @@ export default function DashboardPage() {
             <TokenGenerator />
           </div>
         </section>
+
+           <AttackLab />
+        <section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white shadow-sm p-6">
+  <div className="mb-4">
+    <h3 className="text-lg font-bold tracking-tight">Risk Intelligence Matrix</h3>
+    <p className="text-xs text-[#8790a2]">Real-time risk scoring and behavior assessment for agent tool calls.</p>
+  </div>
+  <RiskIntelligence />
+</section>
+
+<section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white shadow-sm p-6">
+  <div className="mb-4">
+    <h3 className="text-lg font-bold tracking-tight">Forensics Incident Timeline</h3>
+    <p className="text-xs text-[#8790a2]">Chronological reconstruction of transactions, tool calls, and rollbacks.</p>
+  </div>
+  <ForensicsTimeline />
+</section>
+
+<section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white shadow-sm p-6">
+  <div className="mb-4">
+    <h3 className="text-lg font-bold tracking-tight">Security Analytics & Metrics</h3>
+    <p className="text-xs text-[#8790a2]">Aggregated telemetry insights, threat blocks, and protocol performance.</p>
+  </div>
+  <SecurityAnalytics />
+</section>
 
         <footer className="flex flex-col justify-between gap-2 border-t border-[#e7e9f0] pt-5 text-xs text-[#8790a2] sm:flex-row">
           <span>SentinelMCP · Security command center</span>
