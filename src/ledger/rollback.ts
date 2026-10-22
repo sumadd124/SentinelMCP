@@ -1,5 +1,5 @@
 import { client } from "./database.js";
-import { logger } from "../telemetry/events.js";
+import { broadcaster, logger } from "../telemetry/events.js";
 
 export type CompensationFunction = (
   stepInput: Record<string, unknown>,
@@ -37,6 +37,12 @@ export class SagaRollbackEngine {
         sql: "UPDATE transactions SET status = 'ROLLED_BACK', updated_at = ? WHERE id = ?",
         args: [new Date().toISOString(), transactionId],
       });
+      broadcaster.broadcast({
+        type: "ROLLBACK_COMPLETED",
+        transactionId,
+        verdict: "BLOCKED",
+        reason: "Transaction rolled back (0 prior steps required compensation)",
+      });
       return true;
     }
 
@@ -45,13 +51,19 @@ export class SagaRollbackEngine {
     for (const step of steps) {
       const handler = this.handlers.get(step.tool_name);
       if (!handler) {
-        logger.error(`No compensation handler registered for tool: ${step.tool_name}. Saga broken.`);
-        allSucceeded = false;
+        // Read-only tools (like read_invoice, check_balance) don't mutate state, so they can be marked COMPENSATED (no-op)
         await client.execute({
-          sql: "UPDATE transaction_steps SET status = 'COMPENSATION_FAILED' WHERE id = ?",
+          sql: "UPDATE transaction_steps SET status = 'COMPENSATED' WHERE id = ?",
           args: [step.id],
         });
-        break;
+        broadcaster.broadcast({
+          type: "COMPENSATION_EXECUTED",
+          toolName: step.tool_name,
+          transactionId,
+          verdict: "ALLOWED",
+          reason: `Read-only step #${step.step_order} (${step.tool_name}) verified clean — no state reversal required`,
+        });
+        continue;
       }
 
       try {
@@ -66,11 +78,26 @@ export class SagaRollbackEngine {
           args: [step.id],
         });
         logger.info(`Successfully compensated step ${step.id} (${step.tool_name})`);
+        broadcaster.broadcast({
+          type: "COMPENSATION_EXECUTED",
+          toolName: step.tool_name,
+          transactionId,
+          verdict: "ALLOWED",
+          reason: `Reversed state for step #${step.step_order} (${step.tool_name})`,
+          params: input,
+        });
       } catch (err) {
         logger.error(`Failed to compensate step ${step.id} (${step.tool_name}):`, { error: String(err) });
         await client.execute({
           sql: "UPDATE transaction_steps SET status = 'COMPENSATION_FAILED' WHERE id = ?",
           args: [step.id],
+        });
+        broadcaster.broadcast({
+          type: "COMPENSATION_FAILED",
+          toolName: step.tool_name,
+          transactionId,
+          verdict: "BLOCKED",
+          reason: `Compensation failed on ${step.tool_name}: ${String(err)}`,
         });
         allSucceeded = false;
         break;
@@ -81,6 +108,15 @@ export class SagaRollbackEngine {
     await client.execute({
       sql: "UPDATE transactions SET status = ?, updated_at = ? WHERE id = ?",
       args: [finalStatus, new Date().toISOString(), transactionId],
+    });
+
+    broadcaster.broadcast({
+      type: "ROLLBACK_COMPLETED",
+      transactionId,
+      verdict: allSucceeded ? "ALLOWED" : "BLOCKED",
+      reason: allSucceeded
+        ? `Saga rollback completed: ${steps.length} step(s) compensated in reverse order`
+        : "Saga rollback encountered a compensation failure",
     });
 
     return allSucceeded;

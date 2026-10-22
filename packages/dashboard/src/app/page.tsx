@@ -1,4 +1,3 @@
-
 "use client";
 
 import { RiskIntelligence } from "../components/RiskIntelligence";
@@ -23,14 +22,23 @@ import {
 } from "lucide-react";
 
 export default function DashboardPage() {
-  const { events, isConnected, clearEvents } = useTelemetry();
+  const {
+    events,
+    auditHistory,
+    transactions,
+    accounts,
+    isConnected,
+    clearEvents,
+    refreshBackendRecords,
+  } = useTelemetry();
 
   const allowed = events.filter((e) => e.verdict === "ALLOWED").length;
   const blocked = events.filter(
     (e) => e.verdict === "BLOCKED" || e.type === "SAGA_ROLLBACK_INITIATED"
   ).length;
   const rollbacks = events.filter(
-    (e) => e.type === "SAGA_ROLLBACK_INITIATED"
+    (e) =>
+      e.type === "SAGA_ROLLBACK_INITIATED" || e.type === "ROLLBACK_COMPLETED"
   ).length;
 
   return (
@@ -151,8 +159,7 @@ export default function DashboardPage() {
                   </div>
                   <h4 className="font-semibold">Waiting for gateway activity</h4>
                   <p className="mt-2 max-w-sm text-sm leading-6 text-[#8790a2]">
-                    Invoke an MCP tool to see security decisions appear here.
-                    New events will show up when the telemetry stream delivers them.
+                    Invoke an MCP tool or run an Attack Lab scenario below to see security decisions appear here.
                   </p>
                   <div className="mt-4 flex items-center gap-2 text-xs font-medium text-[#697386]">
                     <span className={`h-2 w-2 rounded-full ${isConnected ? "bg-emerald-500" : "bg-rose-500"}`} />
@@ -205,7 +212,14 @@ export default function DashboardPage() {
                             </p>
                           )}
                           {evt.reason && (
-                            <p className="mt-1 break-words text-xs leading-5 text-rose-600">
+                            <p
+                              className={`mt-1 break-words text-xs leading-5 ${
+                                evt.verdict === "BLOCKED" ||
+                                evt.type === "SAGA_ROLLBACK_INITIATED"
+                                  ? "text-rose-600"
+                                  : "text-[#697386]"
+                              }`}
+                            >
                               {evt.reason}
                             </p>
                           )}
@@ -271,8 +285,7 @@ export default function DashboardPage() {
                 <FeatureRow icon={<RotateCcw />} label="Saga compensation" />
               </div>
               <p className="mt-4 text-[11px] leading-5 text-[#8790a2]">
-                Protection features are listed from the project design; verify
-                their live state through gateway events and tests.
+                Protection features are backed by SQLite nonces, regex/Bedrock guardrails, and reverse compensation handlers.
               </p>
             </div>
 
@@ -318,30 +331,152 @@ export default function DashboardPage() {
           </div>
         </section>
 
-           <AttackLab />
-        <section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white shadow-sm p-6">
-  <div className="mb-4">
-    <h3 className="text-lg font-bold tracking-tight">Risk Intelligence Matrix</h3>
-    <p className="text-xs text-[#8790a2]">Real-time risk scoring and behavior assessment for agent tool calls.</p>
-  </div>
-  <RiskIntelligence />
-</section>
+        <AttackLab onScenarioComplete={refreshBackendRecords} />
 
-<section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white shadow-sm p-6">
-  <div className="mb-4">
-    <h3 className="text-lg font-bold tracking-tight">Forensics Incident Timeline</h3>
-    <p className="text-xs text-[#8790a2]">Chronological reconstruction of transactions, tool calls, and rollbacks.</p>
-  </div>
-  <ForensicsTimeline />
-</section>
+        <section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white p-6 shadow-sm">
+          <div className="mb-4 flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="text-lg font-bold tracking-tight">
+                Persisted Security Ledger
+              </h3>
+              <p className="text-xs text-[#8790a2]">
+                Actual backend database records ({auditHistory.length} audit entries, {transactions.length} transactions).
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {accounts.map((acc) => (
+                <div
+                  key={acc.account_id}
+                  className="rounded-xl border border-[#e7e9f0] bg-[#fcfcfe] px-3 py-1.5 text-xs"
+                >
+                  <span className="font-mono font-semibold text-[#697386]">
+                    {acc.account_id}:
+                  </span>{" "}
+                  <span className="font-bold text-[#172033]">
+                    ${Number(acc.balance).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
 
-<section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white shadow-sm p-6">
-  <div className="mb-4">
-    <h3 className="text-lg font-bold tracking-tight">Security Analytics & Metrics</h3>
-    <p className="text-xs text-[#8790a2]">Aggregated telemetry insights, threat blocks, and protocol performance.</p>
-  </div>
-  <SecurityAnalytics />
-</section>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-xl border border-[#e7e9f0] bg-[#fcfcfe] p-4">
+              <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-[#697386]">
+                Recent Audit Decisions
+              </h4>
+              <div className="max-h-56 space-y-2 overflow-auto">
+                {auditHistory.length === 0 ? (
+                  <p className="text-xs text-[#8790a2]">
+                    No persisted audit events yet. Run an Attack Lab scenario above.
+                  </p>
+                ) : (
+                  auditHistory.slice(0, 10).map((row) => (
+                    <div
+                      key={row.id}
+                      className="flex items-start justify-between gap-2 rounded-lg border border-[#edf0f5] bg-white p-2.5 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-[#7047eb]">
+                            {row.tool_name || row.event_type}
+                          </span>
+                          <span
+                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                              row.verdict === "ALLOWED"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-rose-50 text-rose-700"
+                            }`}
+                          >
+                            {row.verdict}
+                          </span>
+                        </div>
+                        {row.reason && (
+                          <p className="mt-1 truncate text-[11px] text-[#697386]">
+                            {row.reason}
+                          </p>
+                        )}
+                      </div>
+                      <span className="shrink-0 font-mono text-[10px] text-[#8790a2]">
+                        {new Date(row.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[#e7e9f0] bg-[#fcfcfe] p-4">
+              <h4 className="mb-3 text-xs font-bold uppercase tracking-wider text-[#697386]">
+                Recent Saga Transactions
+              </h4>
+              <div className="max-h-56 space-y-2 overflow-auto">
+                {transactions.length === 0 ? (
+                  <p className="text-xs text-[#8790a2]">
+                    No persisted transactions yet.
+                  </p>
+                ) : (
+                  transactions.slice(0, 10).map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-[#edf0f5] bg-white p-2.5 text-xs"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-mono font-semibold text-[#172033]">
+                          {tx.id}
+                        </p>
+                        <p className="text-[11px] text-[#697386]">
+                          Initiator: {tx.initiator || tx.client_id || "system"}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold ${
+                          tx.status === "COMPLETED"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : tx.status === "ROLLED_BACK"
+                            ? "bg-amber-50 text-amber-700"
+                            : "bg-rose-50 text-rose-700"
+                        }`}
+                      >
+                        {tx.status}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold tracking-tight">Risk Intelligence Matrix</h3>
+            <p className="text-xs text-[#8790a2]">
+              Real-time risk scoring and behavior assessment for agent tool calls.
+            </p>
+          </div>
+          <RiskIntelligence />
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold tracking-tight">Forensics Incident Timeline</h3>
+            <p className="text-xs text-[#8790a2]">
+              Chronological reconstruction of transactions, tool calls, and rollbacks.
+            </p>
+          </div>
+          <ForensicsTimeline />
+        </section>
+
+        <section className="overflow-hidden rounded-2xl border border-[#e7e9f0] bg-white p-6 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold tracking-tight">Security Analytics & Metrics</h3>
+            <p className="text-xs text-[#8790a2]">
+              Aggregated telemetry insights, threat blocks, and protocol performance.
+            </p>
+          </div>
+          <SecurityAnalytics />
+        </section>
 
         <footer className="flex flex-col justify-between gap-2 border-t border-[#e7e9f0] pt-5 text-xs text-[#8790a2] sm:flex-row">
           <span>SentinelMCP · Security command center</span>

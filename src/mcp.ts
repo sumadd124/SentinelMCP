@@ -53,13 +53,21 @@ export function createMcpServer(): McpServer {
         toolName: tool.name,
         transactionId: txId,
         verdict: "ALLOWED",
+        reason: "Policy and capability checks passed",
       });
 
       // 2. Execute handler
       try {
         const result = await tool.handler(args, context);
         await TransactionLedger.recordStepSuccess(txId, tool.name, args, result);
-await TransactionLedger.completeTransaction(txId);
+        await TransactionLedger.completeTransaction(txId);
+        broadcaster.broadcast({
+          type: "TRANSACTION_COMMITTED",
+          toolName: tool.name,
+          transactionId: txId,
+          verdict: "ALLOWED",
+          reason: `Tool '${tool.name}' executed and committed to ledger`,
+        });
         return {
           content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
         };
@@ -71,6 +79,7 @@ await TransactionLedger.completeTransaction(txId);
           type: "SAGA_ROLLBACK_INITIATED",
           toolName: tool.name,
           transactionId: txId,
+          verdict: "BLOCKED",
           reason: errMessage,
         });
 

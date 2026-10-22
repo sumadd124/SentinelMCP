@@ -106,11 +106,9 @@ ToolRegistry.register({
 // Register compensation with saga engine
 const transferDef = ToolRegistry.get("execute_transfer");
 if (transferDef?.compensate) {
-sagaEngine.registerCompensation("execute_transfer", (async (payload: any, txId: any) => {
-  if (transferDef?.compensate) {
-    await (transferDef.compensate as any)(payload, null, txId);
-  }
-}) as any);
+  sagaEngine.registerCompensation("execute_transfer", async (input, output) => {
+    await transferDef.compensate!(input as any, output);
+  });
 }
 
 // 4. create_user_record
@@ -151,11 +149,9 @@ ToolRegistry.register({
 
 const createRecordDef = ToolRegistry.get("create_user_record");
 if (createRecordDef?.compensate) {
-sagaEngine.registerCompensation("create_user_record", (async (payload: any, txId: any) => {
-  if (createRecordDef?.compensate) {
-    await (createRecordDef.compensate as any)(payload, null, txId);
-  }
-}) as any);
+  sagaEngine.registerCompensation("create_user_record", async (input, output) => {
+    await createRecordDef.compensate!(input as any, output);
+  });
 }
 
 // 5. delete_record
@@ -197,6 +193,13 @@ ToolRegistry.register({
   },
 });
 
+const deleteRecordDef = ToolRegistry.get("delete_record");
+if (deleteRecordDef?.compensate) {
+  sagaEngine.registerCompensation("delete_record", async (input, output) => {
+    await deleteRecordDef.compensate!(input as any, output);
+  });
+}
+
 // 6. send_email
 export const SendEmailSchema = z.object({
   to: z.string().email(),
@@ -231,9 +234,7 @@ ToolRegistry.register({
 
 const sendEmailDef = ToolRegistry.get("send_email");
 if (sendEmailDef?.compensate) {
-sagaEngine.registerCompensation("send_email", (async (payload: any, txId: any) => {
-  if (sendEmailDef?.compensate) {
-    await (sendEmailDef.compensate as any)(payload, null, txId);
-  }
-}) as any);
+  sagaEngine.registerCompensation("send_email", async (input, output) => {
+    await sendEmailDef.compensate!(input as any, output);
+  });
 }
