@@ -7,6 +7,7 @@ SentinelMCP sits between AI agent runtimes (Claude Desktop, custom agentic frame
 ---
 ## 🏛️ System Architecture
 
+                           ```text
                                ┌────────────────────────────────────────────────────────┐
                                │               Host AI Agent / Client                   │
                                │        (Claude Desktop, Custom LLM Pipeline)           │
@@ -102,6 +103,7 @@ SentinelMCP sits between AI agent runtimes (Claude Desktop, custom agentic frame
                         │  - Visual Saga step inspector & rollbacks     │
                         │  - Capability Token Generation Studio         │
                         └───────────────────────────────────────────────┘
+```
 ---
 
 ## 🧱 Core Subsystems
