@@ -1,0 +1,7 @@
+@"
+node_modules/
+dist/
+.env
+data/*.db*
+*.log
+"@ | Out-File -FilePath .gitignore -Encoding utf8 -Append
