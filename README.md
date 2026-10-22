@@ -7,102 +7,65 @@ SentinelMCP sits between AI agent runtimes (Claude Desktop, custom agentic frame
 ---
 ## 🏛️ System Architecture
 
-                           ```text
-                               ┌────────────────────────────────────────────────────────┐
-                               │               Host AI Agent / Client                   │
-                               │        (Claude Desktop, Custom LLM Pipeline)           │
-                               └───────────────────────────┬────────────────────────────┘
-                                                           │
-                                                           │ Standard MCP Protocol
-                                                           │ (JSON-RPC 2.0 via Stdio / SSE Transport)
-                                                           ▼
-┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                  SentinelMCP Gateway Core                                             │
-│                                                                                                                       │
-│   ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                                       Incoming Request Interception Layer                                     │   │
-│   │  - JSON-RPC message validation                                                                                │   │
-│   │  - Schema unmarshalling & parsing                                                                             │   │
-│   │  - Initial transaction lifecycle initialization (UUID assignment)                                            │   │
-│   └──────────────────────────────────────────────────────┬────────────────────────────────────────────────────────┘   │
-│                                                          │                                                            │
-│                                                          ▼                                                            │
-│   ┌───────────────────────────────────────────────────────────────────────────────────────────────────────────────┐   │
-│   │                                      Zero-Trust Policy Enforcement Engine                                     │   │
-│   │                                                                                                               │   │
-│   │   1. Cryptographic Capability Verification                                                                    │   │
-│   │      ├── Signature Check: Constant-time HMAC-SHA256 verification via shared secret                            │   │
-│   │      ├── Expiration Check: Epoch timestamp boundary evaluation (TTL enforcement)                             │   │
-│   │      ├── Scope & Action Binding: Confirms tool invocation matches authorized claims                           │   │
-│   │      └── Replay Protection: Atomic nonce lookup and immediate burn in SQLite store                            │   │
-│   │                                                                                                               │   │
-│   │   2. Dual-Tier Input Guardrail Analysis                                                                      │   │
-│   │      ├── Primary (Cloud): AWS Bedrock Guardrails evaluation (if enabled)                                      │   │
-│   │      └── Fallback (Deterministic): Offline regex heuristic scanner (prompt injection, overrides, leaks)       │   │
-│   │                                                                                                               │   │
-│   │   3. Schema & Numerical Boundary Enforcement                                                                 │   │
-│   │      └── Zod runtime schema parsing, threshold checking, max-amount ceiling validation                      │   │
-│   └──────────────────────────────────────────────────────┬────────────────────────────────────────────────────────┘   │
-│                                                          │                                                            │
-│                                  ┌───────────────────────┴───────────────────────┐                                    │
-│                                  │                                               │                                    │
-│                     Verdict: ALLOWED                                Verdict: BLOCKED                                  │
-│                                  │                                               │                                    │
-│                                  ▼                                               ▼                                    │
-│   ┌──────────────────────────────────────────────────────────┐    ┌───────────────────────────────────────────────┐   │
-│   │                  Saga Transaction Ledger                 │    │             Security & Audit Logger           │   │
-│   │  - Persists initial step record with status = 'STARTED'  │    │  - Appends to audit_events table              │   │
-│   │  - Stores input arguments snapshot                       │    │  - Captures rule triggered & violating payload│   │
-│   └──────────────────────────────┬───────────────────────────┘    └──────────────────────┬────────────────────────┘   │
-│                                  │                                                       │                            │
-│                                  ▼                                                       │                            │
-│   ┌──────────────────────────────────────────────────────────┐                           │                            │
-│   │                   Tool Registry & Sandbox                │                           │                            │
-│   │  - Invokes underlying handler with execution context     │                           │                            │
-│   │  - Sandbox execution:                                    │                           │                            │
-│   │    • execute_transfer / check_balance                    │                           │                            │
-│   │    • read_invoice                                        │                           │                            │
-│   │    • create_user_record / delete_record                  │                           │                            │
-│   │    • send_email                                          │                           │                            │
-│   └──────────────────────────────┬───────────────────────────┘                           │                            │
-│                                  │                                                       │                            │
-│                     ┌────────────┴────────────┐                                          │                            │
-│                     │                         │                                          │                            │
-│             Execution SUCCESS         Execution FAILURE                                  │                            │
-│                     │                         │                                          │                            │
-│                     ▼                         ▼                                          │                            │
-│   ┌────────────────────────────────┐  ┌───────────────────────────────────────┐          │                            │
-│   │ Transaction Status: COMMITTED  │  │   Saga Compensating Rollback Engine   │          │                            │
-│   │  - Updates step to 'SUCCESS'   │  │  - Traverses executed steps in LIFO   │          │                            │
-│   │  - Stores output payload       │  │    reverse order                      │          │                            │
-│   │  - Completes transaction run   │  │  - Executes inverse handlers:         │          │                            │
-│   │                                │  │    • Reverse account credit/debit     │          │                            │
-│   │                                │  │    • Restore deleted DB records       │          │                            │
-│   │                                │  │    • Cancel queued email outbox drafts│          │                            │
-│   │                                │  │  - Updates status to 'ROLLED_BACK'    │          │                            │
-│   └────────────────┬───────────────┘  └──────────────────┬────────────────────┘          │                            │
-│                    │                                     │                               │                            │
-│                    └──────────────────┬──────────────────┘                               │                            │
-│                                       │                                                  │                            │
-│                                       ▼                                                  │                            │
-│   ┌──────────────────────────────────────────────────────────────────────────────────┐   │                            │
-│   │                         Real-Time Telemetry Event Bus                            │◄──┘                            │
-│   │  Emits structured events:                                                        │                                │
-│   │  • TOOL_REQUEST               • TOOL_VERDICT (ALLOWED / BLOCKED)                 │                                │
-│   │  • SAGA_ROLLBACK_INITIATED    • TRANSACTION_COMMITTED                            │                                │
-│   └───────────────────────────────────────────┬──────────────────────────────────────┘                                │
-└───────────────────────────────────────────────┼───────────────────────────────────────────────────────────────────────┘
-                                                │
-                                                │ Server-Sent Events (SSE) Stream
-                                                │ GET /sse
-                                                ▼
-                        ┌───────────────────────────────────────────────┐
-                        │             Observability Client              │
-                        │          (Next.js Web Dashboard)              │
-                        │  - Real-time audit log stream                 │
-                        │  - Visual Saga step inspector & rollbacks     │
-                        │  - Capability Token Generation Studio         │
-                        └───────────────────────────────────────────────┘
+                          ```mermaid
+flowchart TD
+    Agent["Host AI Agent / Client<br/><i>(Claude Desktop, Custom LLM)</i>"] 
+    -->|JSON-RPC 2.0 via Stdio / SSE| Gateway
+
+    subgraph Gateway ["SentinelMCP Gateway Core"]
+        direction TB
+
+        subgraph Interception ["1. Interception Layer"]
+            I1["JSON-RPC Validation &amp; Schema Parsing"]
+            I2["Assign Transaction UUID"]
+        end
+
+        subgraph PolicyEngine ["2. Zero-Trust Policy Engine"]
+            P1["HMAC-SHA256 Capability Verification"]
+            P2["Single-Use Nonce Replay Check (SQLite)"]
+            P3["Dual-Tier Guardrail (Bedrock / Local Regex)"]
+            P4["Parameter Bounds &amp; Spending Ceilings"]
+        end
+
+        subgraph Decision {"Policy Verdict"}
+        end
+
+        subgraph AllowedFlow ["3. Execution Path"]
+            L1["Saga Ledger: Record Step ('STARTED')"]
+            T1["Tool Registry &amp; Sandbox Execution"]
+        end
+
+        subgraph Outcomes {"Handler Result"}
+        end
+
+        subgraph SuccessPath ["Success State"]
+            S1["Update Step: 'SUCCESS'"]
+            S2["Ledger Status: 'COMMITTED'"]
+        end
+
+        subgraph FailurePath ["Compensating Reversal"]
+            R1["Trigger Saga Rollback Engine"]
+            R2["Execute Inverse Compensations (LIFO)"]
+            R3["Ledger Status: 'ROLLED_BACK'"]
+        end
+
+        subgraph Telemetry ["4. Telemetry &amp; Audit Layer"]
+            A1["Persist Event to audit_events (SQLite)"]
+            A2["Broadcast Event via /sse Stream"]
+        end
+
+        Interception --> PolicyEngine
+        PolicyEngine --> Decision
+        Decision -->|ALLOWED| AllowedFlow
+        Decision -->|BLOCKED| Telemetry
+        AllowedFlow --> Outcomes
+        Outcomes -->|SUCCESS| SuccessPath
+        Outcomes -->|FAILURE| FailurePath
+        SuccessPath --> Telemetry
+        FailurePath --> Telemetry
+    end
+
+    Telemetry -->|Server-Sent Events| Dashboard["Next.js Monitoring Dashboard"]
 ```
 ---
 
