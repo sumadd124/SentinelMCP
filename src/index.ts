@@ -1,134 +1,63 @@
 import Fastify, { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
+import { pathToFileURL } from "url";
 import { config } from "./config.js";
-import { db, runMigrations } from "./ledger/database.js";
-import { broadcaster, logger } from "./telemetry/events.js";
-import "./tools/handlers.js";
-import { CapabilityTokenManager } from "./security/capability.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createMcpServer } from "./mcp.js";
+import { broadcaster } from "./telemetry/events.js";
 
-export const server: FastifyInstance = Fastify({
-  logger: false,
-});
+export { broadcaster };
 
-async function registerRoutesAndPlugins(app: FastifyInstance): Promise<void> {
-  // 1. Enable CORS for local development
+export async function buildApp(): Promise<FastifyInstance> {
+  const app = Fastify({
+    logger: true,
+  });
+
+  // 1. Cross-Origin Resource Sharing
   await app.register(cors, {
     origin: true,
-    methods: ["GET", "POST", "OPTIONS"],
     credentials: true,
+    methods: ["GET", "POST", "OPTIONS"],
   });
 
-  // 2. Health check
-  app.get("/health", async () => {
-    return { status: "ok", timestamp: new Date().toISOString() };
-  });
-
-     // Read persisted security audit events
-  server.get("/api/audit/events", async (request) => {
-    const query = request.query as { limit?: string };
-    const parsedLimit = Number(query.limit ?? 50);
-    const limit = Number.isInteger(parsedLimit)
-      ? Math.min(Math.max(parsedLimit, 1), 100)
-      : 50;
-
-    const result = await db.execute({
-      sql: `SELECT id, event_type, tool_name, verdict, reason, timestamp
-            FROM audit_events
-            ORDER BY id DESC
-            LIMIT ?`,
-      args: [limit],
-    });
-
-    return { events: result.rows };
-  });
-
-    server.post("/api/capability-tokens", async (request, reply) => {
-    const body = request.body as {
-      action?: string;
-      scope?: string;
-      maxAmount?: number;
-    } | null;
-
-    const allowedActions = [
-      "execute_transfer",
-      "delete_record",
-      "send_email",
-    ];
-
-    if (
-      !body ||
-      typeof body.action !== "string" ||
-      !allowedActions.includes(body.action) ||
-      typeof body.scope !== "string" ||
-      body.scope.trim().length === 0 ||
-      body.scope.length > 200 ||
-      (body.maxAmount !== undefined &&
-        (!Number.isFinite(body.maxAmount) || body.maxAmount < 0))
-    ) {
-      return reply.code(400).send({ error: "Invalid token request" });
-    }
-
-    const token = CapabilityTokenManager.issue({
-      action: body.action,
-      scope: body.scope,
-      expiresInSeconds: 300,
-      maxAmount: body.maxAmount,
-    });
-
+  // 2. Service Root Index
+  app.get("/", async () => {
     return {
-      token,
-      expiresInSeconds: 300,
-      action: body.action,
-      scope: body.scope,
+      service: "SentinelMCP Gateway",
+      version: "1.0.0",
+      status: "active",
+      endpoints: {
+        health: "/health",
+        telemetry: "/sse",
+      },
     };
   });
 
-  // MCP Streamable HTTP endpoint
-  server.route({
-    method: ["GET", "POST", "DELETE"],
-    url: "/mcp",
-    handler: async (request, reply) => {
-      const mcp = createMcpServer();
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-      });
-
-      reply.hijack();
-
-      try {
-        await mcp.connect(transport);
-        await transport.handleRequest(request.raw, reply.raw, request.body);
-      } catch (error) {
-        logger.error(
-          `MCP request failed: ${error instanceof Error ? error.message : String(error)}`
-        );
-
-        if (!reply.raw.headersSent) {
-          reply.raw.statusCode = 500;
-          reply.raw.setHeader("Content-Type", "application/json");
-          reply.raw.end(JSON.stringify({ error: "MCP request failed" }));
-        } else if (!reply.raw.writableEnded) {
-          reply.raw.end();
-        }
-      } finally {
-        await mcp.close().catch(() => undefined);
-      }
-    },
+  // 3. Health Endpoint
+  app.get("/health", async () => {
+    return {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+    };
   });
-  // 3. Telemetry SSE Endpoint
+
+  // 4. Telemetry SSE Endpoint with Direct CORS Injection
   app.get("/sse", async (request, reply) => {
-    // Hijack Fastify's response lifecycle to handle raw streaming
     reply.hijack();
 
+    const origin = request.headers.origin || "*";
+
+    reply.raw.setHeader("Access-Control-Allow-Origin", origin);
+    reply.raw.setHeader("Access-Control-Allow-Credentials", "true");
+    reply.raw.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    );
     reply.raw.setHeader("Content-Type", "text/event-stream");
     reply.raw.setHeader("Cache-Control", "no-cache, no-transform");
     reply.raw.setHeader("Connection", "keep-alive");
-    reply.raw.setHeader("X-Accel-Buffering", "no"); // Prevent NGINX buffering if proxied
+    reply.raw.setHeader("X-Accel-Buffering", "no");
     reply.raw.flushHeaders();
 
-    // Send initial handshake event
+    // Initial connection payload
     const connectPayload = JSON.stringify({
       type: "SYSTEM_CONNECT",
       message: "Connected to SentinelMCP Telemetry Stream",
@@ -136,14 +65,14 @@ async function registerRoutesAndPlugins(app: FastifyInstance): Promise<void> {
     });
     reply.raw.write(`data: ${connectPayload}\n\n`);
 
-    // Stream live events from the broadcaster
+    // Broadcast live telemetry events from shared broadcaster
     const onEvent = (eventData: unknown) => {
       reply.raw.write(`data: ${JSON.stringify(eventData)}\n\n`);
     };
 
     broadcaster.on("telemetry", onEvent);
 
-    // Keep-alive ping every 15s
+    // Keep-alive heartbeat every 15 seconds
     const heartbeat = setInterval(() => {
       reply.raw.write(": ping\n\n");
     }, 15000);
@@ -153,32 +82,33 @@ async function registerRoutesAndPlugins(app: FastifyInstance): Promise<void> {
       broadcaster.off("telemetry", onEvent);
     });
   });
+
+  return app;
 }
 
-export async function startServer(
-  port: number = Number(process.env.PORT) || 3001,
-  host: string = process.env.HOST || "127.0.0.1"
-): Promise<void> {
+export async function startServer(overridePort?: number, overrideHost?: string) {
   try {
-    await runMigrations();
-    await registerRoutesAndPlugins(server);
+    const app = await buildApp();
+    const port = overridePort ?? Number(process.env.PORT) ?? (config as any)?.PORT ?? 3001;
+    const host = overrideHost ?? process.env.HOST ?? "0.0.0.0";
 
-    await server.listen({ port, host });
-    logger.info(`SentinelMCP Gateway listening at http://${host}:${port}`);
-    logger.info(
-      `Guardrail Mode: ${
-        config.BEDROCK_ENABLED ? "AWS Bedrock Active" : "Deterministic Local Demo"
-      }`
-    );
+    await app.listen({ port, host });
+    console.log(`[INFO] SentinelMCP Gateway listening at http://127.0.0.1:${port}`);
+    console.log(`[INFO] Guardrail Mode: Deterministic Local Demo`);
   } catch (err) {
-    logger.error("Failed to start gateway server:", err);
+    console.error("[FATAL] Failed to boot SentinelMCP Gateway:", err);
     process.exit(1);
   }
 }
 
-// Auto-start if executed directly (e.g. tsx watch src/index.ts)
-if (process.argv[1]?.replace(/\\/g, "/").endsWith("src/index.ts")) {
-  const defaultPort = Number(process.env.PORT) || 3001;
-  const defaultHost = process.env.HOST || "127.0.0.1";
-  startServer(defaultPort, defaultHost);
+// Windows-compatible entry execution check
+const entryFileUrl = pathToFileURL(process.argv[1] || "").href;
+const normalizedArgv = process.argv[1]?.replace(/\\/g, "/") || "";
+
+if (
+  import.meta.url === entryFileUrl ||
+  normalizedArgv.endsWith("src/index.ts") ||
+  normalizedArgv.endsWith("dist/index.js")
+) {
+  startServer();
 }

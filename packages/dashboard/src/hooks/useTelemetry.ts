@@ -3,15 +3,19 @@
 import { useEffect, useState } from "react";
 import type { TelemetryEvent } from "../types/telemetry";
 
-const GATEWAY_SSE_URL =
-  process.env.NEXT_PUBLIC_GATEWAY_URL || "http://127.0.0.1:3001/sse";
+function getSseUrl(): string {
+  const rawUrl = process.env.NEXT_PUBLIC_GATEWAY_URL?.trim() || "http://127.0.0.1:3001";
+  const sanitized = rawUrl.replace(/\/+$/, "");
+  return sanitized.endsWith("/sse") ? sanitized : `${sanitized}/sse`;
+}
 
 export function useTelemetry() {
   const [events, setEvents] = useState<TelemetryEvent[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    const es = new EventSource(GATEWAY_SSE_URL);
+    const sseUrl = getSseUrl();
+    const es = new EventSource(sseUrl);
 
     es.onopen = () => {
       setIsConnected(true);
