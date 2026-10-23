@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { AppShell } from "../components/AppShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,9 +14,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SentinelMCP — Security Command Center",
+  title: "SentinelMCP — Zero-Trust MCP Security Gateway & Command Center",
   description:
-    "Real-time MCP security monitoring, zero-trust guardrails, and transaction intelligence.",
+    "Real-time MCP security monitoring, HMAC-SHA256 capability enforcement, prompt guardrails, and Saga transaction rollback recovery.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -24,7 +25,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

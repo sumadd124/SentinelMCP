@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import type {
   AuditEventRow,
   MockAccountRow,
@@ -19,7 +25,20 @@ function getSseUrl(): string {
   return `${getGatewayBaseUrl()}/sse`;
 }
 
-export function useTelemetry() {
+export interface TelemetryState {
+  events: TelemetryEvent[];
+  auditHistory: AuditEventRow[];
+  transactions: TransactionRow[];
+  transactionSteps: TransactionStepRow[];
+  accounts: MockAccountRow[];
+  isConnected: boolean;
+  clearEvents: () => void;
+  refreshBackendRecords: () => Promise<void>;
+}
+
+const TelemetryContext = createContext<TelemetryState | null>(null);
+
+function useTelemetryInternal(enabled: boolean): TelemetryState {
   const [events, setEvents] = useState<TelemetryEvent[]>([]);
   const [auditHistory, setAuditHistory] = useState<AuditEventRow[]>([]);
   const [transactions, setTransactions] = useState<TransactionRow[]>([]);
@@ -52,14 +71,18 @@ export function useTelemetry() {
   }, []);
 
   useEffect(() => {
-    refreshBackendRecords();
+    if (!enabled) return;
+
+    const timer = window.setTimeout(() => {
+      void refreshBackendRecords();
+    }, 0);
 
     const sseUrl = getSseUrl();
     const es = new EventSource(sseUrl);
 
     es.onopen = () => {
       setIsConnected(true);
-      refreshBackendRecords();
+      void refreshBackendRecords();
     };
 
     es.onerror = () => {
@@ -71,22 +94,25 @@ export function useTelemetry() {
         const parsed = JSON.parse(e.data) as TelemetryEvent;
         const normalized: TelemetryEvent = {
           ...parsed,
-          toolName: parsed.toolName || ((parsed as unknown as { tool?: string }).tool),
+          toolName:
+            parsed.toolName ||
+            (parsed as unknown as { tool?: string }).tool,
           source: "live_sse",
         };
         setEvents((prev) => [normalized, ...prev.slice(0, 99)]);
-        refreshBackendRecords();
+        void refreshBackendRecords();
       } catch (err) {
         console.error("Failed to parse SSE message:", err);
       }
     };
 
     return () => {
+      window.clearTimeout(timer);
       es.close();
     };
-  }, [refreshBackendRecords]);
+  }, [enabled, refreshBackendRecords]);
 
-  const clearEvents = () => setEvents([]);
+  const clearEvents = useCallback(() => setEvents([]), []);
 
   return {
     events,
@@ -98,4 +124,23 @@ export function useTelemetry() {
     clearEvents,
     refreshBackendRecords,
   };
+}
+
+export function TelemetryProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const state = useTelemetryInternal(true);
+  return React.createElement(
+    TelemetryContext.Provider,
+    { value: state },
+    children
+  );
+}
+
+export function useTelemetry(): TelemetryState {
+  const context = useContext(TelemetryContext);
+  const fallback = useTelemetryInternal(context === null);
+  return context ?? fallback;
 }
