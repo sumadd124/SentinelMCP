@@ -1,130 +1,273 @@
-# SentinelMCP 🛡️
+# SentinelMCP — Zero-Trust Security for AI Agents
 
-**A locally runnable, zero-trust security gateway, policy enforcer, and transaction monitor for the Model Context Protocol (MCP).**
+**SentinelMCP is a security gateway for AI agents using the Model Context Protocol (MCP).** It introduces a policy-enforcement layer between an AI agent and the tools it can invoke, helping control sensitive actions, inspect untrusted inputs, record security decisions, and recover from supported multi-step workflow failures.
 
-SentinelMCP sits between AI agent runtimes (Claude Desktop, custom agentic frameworks, LLM orchestrators) and backend MCP tool servers. It acts as an active policy enforcement firewall that prevents unauthorized invocations, stops prompt injection attacks before tool execution, guards high-value actions with cryptographically signed capability tokens, and guarantees data consistency across multi-step agent plans using compensating Saga rollback transactions.
+As AI agents gain access to APIs, databases, and external tools, applications need more than the ability to execute tool calls. They need authorization, input validation, auditability, and a way to investigate and recover from failures.
 
----
+SentinelMCP brings these security concerns into one system, combining policy enforcement, capability-based authorization, transaction tracking, security telemetry, and a dashboard for monitoring and investigation.
 
-## 🧱 Core Subsystems
+**Live Dashboard:** https://sentinel-mcp-chi.vercel.app/
 
-### 1. Capability Token Engine (Zero-Trust Proof of Intent)
-- Enforces explicit cryptographic authorization for sensitive tool invocations (e.g., executing money transfers, deleting records).
-- Generates and validates **HMAC-SHA256 signed capability tokens** structured with specific action permissions, scope restrictions, and strict TTL limits.
-- Persists UUID-based nonces in SQLite to guarantee **single-use replay attack prevention**.
+**GitHub Repository:** https://github.com/sumadd124/SentinelMCP
 
-### 2. Dual-Tier Guardrail Engine
-- Inspects target input parameters prior to tool execution for jailbreaks, prompt injections, and system overrides.
-- Dual execution strategy:
-  - **AWS Bedrock Guardrails:** Cloud-native evaluation when credentials are present.
-  - **Deterministic Local Guardrail Fallback:** Offline regex-based pattern matching (e.g., catching `ignore previous instructions`, `bypass rules`) ensuring zero external dependencies during local development.
+## The Problem
 
-### 3. Saga Distributed Transaction Ledger
-- Tracks multi-step autonomous agent actions inside a local SQLite ledger (`@libsql/client` with WAL mode and exponential busy timeouts).
-- Records step parameters, forward outputs, and execution states (`STARTED`, `COMMITTED`, `ROLLED_BACK`).
-- If an agent plan fails midway or downstream guardrails reject a dependent step, the **Saga Rollback Engine** automatically triggers compensating actions in reverse order to return databases and records to their original clean state.
+AI agents can interact with tools that retrieve information, access resources, or modify data. Without a dedicated security layer, developers face several challenges:
 
-### 4. Official MCP Protocol Adapter
-- Connects directly into standard MCP client orchestrators using `@modelcontextprotocol/sdk`.
-- Exposes typed Zod schemas, auto-wires safety wrappers around tool execution, and returns structured errors when policies deny requests.
+- **Unauthorized tool execution:** An agent may attempt an operation that should require additional permission.
+- **Prompt injection:** Untrusted input may attempt to manipulate an agent or influence downstream tool execution.
+- **Weak authorization boundaries:** Sensitive operations need permissions scoped to specific actions and contexts.
+- **Token replay:** Previously issued authorization should not be reusable when it has expired or already been consumed.
+- **Limited auditability:** Security decisions and tool outcomes need to be recorded for investigation.
+- **Partial workflow failures:** A failure in a later step of a multi-step operation may require compensating actions for earlier changes.
 
----
+SentinelMCP addresses these challenges by placing security checks between an agent's tool request and the tool handler.
 
-## 📋 What Has Been Built (Completed)
+## The Solution
 
-- [x] **Monorepo & Build Foundation:** Strict TypeScript (ES2022, NodeNext), Fastify server setup, and dependency layout.
-- [x] **Windows-Native SQLite Pipeline:** Configured `@libsql/client` running on pure JS/Wasm bindings to bypass native `node-gyp` C++ compilation issues on Windows and newer Node runtimes.
-- [x] **Singleton Tool Registry:** Dynamic registration supporting Zod schemas, security policies, context passing, and reverse compensations.
-- [x] **Mock Sandbox Suite:** 6 fully functional tools:
-  - `read_invoice`: Static invoice retrieval.
-  - `check_balance`: Query account ledger.
-  - `execute_transfer` / `simulate_transfer`: Balance adjustments protected by capability tokens and reversible via saga compensation.
-  - `create_user_record`: Monitored text persistence (with content inspection).
-  - `delete_record`: Hard deletion protected by capability tokens with undo recovery.
-  - `send_email`: Outbox drafting verified by dual guardrails.
-- [x] **Saga Ledger & Auto-Rollback Engine:** Database tables (`transactions`, `transaction_steps`, `nonces`, `records`, `audit_events`) with complete schema self-healing migrations and automated reverse rollbacks.
-- [x] **HMAC Capability Token Manager:** Issuance, parsing, signature validation, TTL enforcement, and anti-replay nonce tracking.
-- [x] **Telemetry & SSE Stream:** Fastify event broadcaster pushing live `TOOL_REQUEST`, `TOOL_VERDICT`, and `SAGA_ROLLBACK_INITIATED` telemetry down `/sse`.
-- [x] **Vitest Test Suite (100% Passing):**
-  - `tests/capability.test.ts` (4/4 tests passed)
-  - `tests/policy.test.ts` (2/2 tests passed)
-  - `tests/transactions.test.ts` (1/1 test passed)
-  - `tests/mcp.integration.test.ts` (1/1 test passed via In-Memory MCP transport)
+SentinelMCP acts as a security gateway for MCP-based tool execution. It evaluates requests before they reach protected operations, applies authorization checks where required, records transaction outcomes, and exposes security telemetry for inspection.
 
----
+Its core design combines:
 
-## 🚧 What Is Left To Do
+- Policy-based tool access control
+- Input guardrails for suspicious or prompt-injection-related patterns
+- HMAC-SHA256-signed capability tokens for selected sensitive actions
+- Token expiry, scope validation, and nonce tracking
+- SQLite-backed transaction and audit records
+- Compensating Saga actions for supported multi-step workflows
+- Security event monitoring and incident investigation through a web dashboard
+- An optional AWS Bedrock Guardrails integration when configured
 
-- [ ] **Stage 5: Real-Time Monitoring Dashboard (Next.js)**
-  - Scaffold Next.js frontend in `packages/dashboard` (or standalone UI).
-  - Connect to Gateway Server-Sent Events endpoint (`http://localhost:3000/sse`).
-  - Render real-time feed: incoming tool executions, pass/block verdicts, and payload details.
-  - Build UI Capability Token Generator (generate signed test tokens directly from browser).
-  - Add Ledger Transaction Inspector (visualize multi-step saga executions and compensation triggers).
-- [ ] **Workspace Decoupling (Monorepo Optimization)**
-  - Split root code into clean `packages/gateway` and `packages/dashboard` npm workspaces.
-- [ ] **Production Packaging & CLI Runner**
-  - Add an executable CLI bin script (`sentinelmcp start`) for one-command local launching.
-- [ ] **Claude Desktop Integration Guide**
-  - Document `claude_desktop_config.json` setup to hook Claude directly into SentinelMCP over SSE or stdio.
+The goal is to make agent tool execution more controlled, observable, and auditable.
 
----
+## How SentinelMCP Works
 
-## 🛠️ Quickstart & Local Setup
+1. **Request interception:** An MCP tool request enters the SentinelMCP gateway.
+2. **Policy evaluation:** The gateway evaluates the request against applicable security rules.
+3. **Input screening:** Configured guardrails inspect untrusted input for suspicious patterns.
+4. **Capability authorization:** Selected sensitive actions require a valid signed capability token with appropriate scope and expiry.
+5. **Controlled execution:** Approved requests are passed to the relevant tool handler.
+6. **Transaction recording:** Decisions, execution outcomes, and supported recovery actions are recorded.
+7. **Failure compensation:** When a supported multi-step workflow fails, registered compensating actions can run to address earlier changes.
+8. **Security monitoring:** The dashboard presents security events and investigation views when the gateway is running and connected.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    A[AI Agent / MCP Client] --> B[SentinelMCP Security Gateway]
+    B --> C[Policy Enforcement]
+    C --> D[Input Guardrails]
+    D --> E{Protected Action?}
+    E -->|Yes| F[Capability Token Verification]
+    E -->|No| G[Tool Handler]
+    F -->|Authorized| G
+    F -->|Rejected| H[Security Event / Audit Record]
+    C -->|Denied| H
+    G --> I[Transaction Ledger]
+    G --> J{Workflow Successful?}
+    J -->|Yes| K[Complete Transaction]
+    J -->|No| L[Compensating Saga Actions]
+    L --> I
+    B --> M[Security Telemetry]
+    M --> N[SentinelMCP Dashboard]
+```
+
+## Key Features
+
+### 1. Policy Enforcement and Input Guardrails
+
+SentinelMCP evaluates tool requests before execution and can reject requests that violate configured security rules.
+
+Input guardrails are designed to identify suspicious input patterns, including prompt-injection-related attempts. Detection depends on the configured rules and guardrail implementation; no single mechanism can guarantee detection of every attack.
+
+### 2. Capability-Based Authorization
+
+Selected sensitive operations can require signed capability tokens rather than relying solely on the agent's intent.
+
+The authorization design includes:
+
+- HMAC-SHA256 token signing and verification
+- Action and scope validation
+- Expiry and time-to-live checks
+- Nonce tracking intended to prevent token reuse
+- Rejection of invalid or unauthorized requests
+
+This provides a foundation for scoped authorization and controlled access to sensitive tools.
+
+### 3. Transaction Ledger and Auditability
+
+SentinelMCP records transaction information in SQLite, helping make tool activity and security decisions easier to inspect.
+
+The ledger supports investigation of execution outcomes and supported recovery operations. Its purpose is to improve traceability when analyzing allowed requests, rejected requests, and workflow failures.
+
+### 4. Compensating Saga Rollbacks
+
+Multi-step agent workflows can fail after some operations have already succeeded.
+
+SentinelMCP supports registered compensating actions for applicable workflows. When a later step fails, these actions can run in reverse order to address earlier changes.
+
+Compensation depends on the handlers implemented for each operation; not every external side effect can be guaranteed to be reversible.
+
+### 5. Security Telemetry and Monitoring
+
+SentinelMCP provides telemetry intended to make gateway activity visible through a web dashboard.
+
+The dashboard brings security-related views together, including:
+
+- Security Stream
+- Capability Token Studio
+- Attack Lab and Simulations
+- Persisted Security Ledger
+- Risk Intelligence Matrix
+- Forensics and Incident Timeline
+- Security Analytics and Metrics
+
+These views support the inspection of security decisions, authorization behavior, and transaction history. Live data depends on the gateway and its telemetry connection being active.
+
+### 6. Optional AWS Bedrock Guardrails Integration
+
+The project includes an optional AWS Bedrock Guardrails integration path alongside a local guardrail approach.
+
+The AWS integration should be considered active only when the required configuration and credentials are supplied and the integration is successfully exercised. The local fallback should not be represented as an AWS service call.
+
+## Technology Stack
+
+The project uses a TypeScript and Node.js-oriented architecture.
+
+| Component | Technology or purpose |
+|---|---|
+| Core language | TypeScript |
+| Runtime | Node.js |
+| Agent-tool protocol | Model Context Protocol (MCP) |
+| MCP tooling | Official MCP SDK |
+| Server framework | Fastify |
+| Input validation | Zod |
+| Transaction persistence | SQLite / libSQL client |
+| Capability signing | HMAC-SHA256 |
+| Web dashboard | Next.js |
+| Optional cloud guardrails | AWS Bedrock Guardrails |
+| Deployment | Vercel for the hosted dashboard |
+
+Refer to the source code and environment configuration for the exact runtime requirements and enabled integrations.
+
+## Running Locally
 
 ### Prerequisites
-- **Node.js**: v20 or v22+
-- **npm**: v10+
-- **OS**: Windows, macOS, or Linux
 
-### 1. Installation
-```powershell
-# Clone the repository
-git clone [https://github.com/](https://github.com/)<YOUR_GITHUB_USERNAME>/sentinelmcp.git
-cd sentinelmcp
+- Node.js 20 or later
+- npm
+- Git
 
-# Install dependencies
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/sumadd124/SentinelMCP.git
+cd SentinelMCP
+```
+
+### 2. Install dependencies
+
+```bash
 npm install
+```
 
-2. Environment SetupCopy the sample environment configuration:PowerShellcp .env.example .env
-Default parameters in .env:Code snippetPORT=3000
-HOST=127.0.0.1
-NODE_ENV=development
-LOG_LEVEL=info
-CAPABILITY_SECRET=sentinel-local-dev-secret-32-chars-min
-BEDROCK_ENABLED=false
-DATABASE_PATH=data/sentinel_ledger.db
-3. Verification & Type CheckingPowerShell# Run TypeScript compilation checks
-npm run typecheck
+### 3. Configure environment variables
 
-# Run test suite
+Copy the example environment file.
+
+**Windows PowerShell:**
+
+```powershell
+Copy-Item .env.example .env
+```
+
+**macOS / Linux:**
+
+```bash
+cp .env.example .env
+```
+
+Review `.env.example` and configure the required values for your environment. Keep API keys, signing secrets, and cloud credentials private. Do not commit secrets to GitHub.
+
+### 4. Start the application
+
+Check the scripts available in the root `package.json` and use the appropriate command to start the gateway and dashboard.
+
+The dashboard is also available at:
+
+https://sentinel-mcp-chi.vercel.app/
+
+A deployed dashboard does not automatically mean that a local or remote MCP gateway is running. Start the gateway separately and verify the connection before testing live telemetry.
+
+### 5. Run tests
+
+```bash
 npm test
-4. Running the SentinelMCP GatewayPowerShell# Start local gateway server
-npm run dev
-The server will boot on http://127.0.0.1:3000:Healthcheck: GET http://127.0.0.1:3000/healthTelemetry Stream: GET http://127.0.0.1:3000/sseAudit History API: GET http://127.0.0.1:3000/api/audit/events📂 Project Directory Structuresentinelmcp/
-├── data/                      # Local SQLite database & WAL journal logs
-├── src/
-│   ├── config.ts              # Zod-validated environment config
-│   ├── index.ts               # Gateway bootstrap entrypoint
-│   ├── mcp.ts                 # MCP Server protocol adapter & middleware
-│   ├── server.ts              # Fastify HTTP & SSE streaming server
-│   ├── ledger/
-│   │   ├── database.ts        # @libsql/client setup & self-healing migrations
-│   │   ├── rollback.ts        # Saga compensation execution engine
-│   │   └── transactions.ts    # Transaction state tracking & step logs
-│   ├── security/
-│   │   ├── capability.ts      # HMAC token issuance & replay prevention
-│   │   ├── guardrail.ts       # AWS Bedrock + Regex fallback guardrail
-│   │   └── policy.ts          # Unified tool policy enforcement engine
-│   ├── telemetry/
-│   │   └── events.ts          # Central EventEmitter for SSE streaming
-│   └── tools/
-│       ├── handlers.ts        # 6 sandbox tools & compensations
-│       ├── registry.ts        # Singleton tool registry
-│       └── types.ts           # Core interfaces & security policy contracts
-└── tests/
-    ├── capability.test.ts     # Token issuance, replay & TTL tests
-    ├── mcp.integration.test.ts# MCP SDK In-Memory transport integration test
-    ├── policy.test.ts         # Guardrail injection block & pass tests
-    └── transactions.test.ts   # Saga execution & reverse rollback tests
-🧪 Testing CoverageTest FileCovered ComponentsTarget Resulttests/capability.test.tsHMAC signing, Nonces, Anti-Replay, ExpirationPASS (4/4)tests/policy.test.tsLocal regex fallback, Content inspectionPASS (2/2)tests/transactions.test.tsSaga forward step logging, Reversal on errorPASS (1/1)tests/mcp.integration.test.tsIn-memory MCP client handshake & listingPASS (1/1)
+```
+
+Use the scripts defined in the current `package.json` for any additional type checks, builds, or integration tests.
+
+## Testing and Validation
+
+SentinelMCP's test coverage is intended to exercise security-critical behavior, including:
+
+- Capability token validation
+- Policy and guardrail decisions
+- Transaction handling and compensation
+- MCP integration behavior
+
+Run the test suite against the exact commit you intend to submit. Report test counts only after confirming the current results.
+
+MCP specification-version compliance and transport support should also be verified with a real MCP client before being claimed as complete.
+
+## Hackathon Track Alignment
+
+### Primary Track Candidate: Alexa+
+
+SentinelMCP is a strong conceptual fit for the Alexa+ track because it focuses on securing agent tool execution through the Model Context Protocol.
+
+Its contribution is a security boundary around tool access: policy enforcement, scoped authorization, input guardrails, transaction records, and recovery workflows.
+
+**Eligibility must be verified against the official hackathon requirements.** Confirm that the submitted server supports the required MCP specification version and Streamable HTTP transport, or demonstrate the permitted simulated-client approach. The dashboard alone is not evidence of MCP protocol compliance.
+
+### AWS Builder Mini Challenge — Conditional
+
+The project may fit the AWS Builder mini challenge if an eligible AWS service is genuinely integrated and used in the submitted version.
+
+If using AWS Bedrock Guardrails, document the actual integration, explain how its output influences the security decision, and demonstrate the working path. Do not claim AWS usage merely because the code contains an optional integration.
+
+### Open Source Mini Challenge — Conditional
+
+A public repository alone does not establish eligibility for the Open Source mini challenge. The challenge requires a qualifying new open-source project or contribution during the hackathon window.
+
+If entering this mini challenge, include the qualifying contribution or project URL, repository URL, required GitHub username, and a concise explanation of what changed, how it works, and why it matters.
+
+## Responsible Use and Limitations
+
+- SentinelMCP is a security prototype, not a guarantee of complete protection against malicious inputs.
+- Pattern-based guardrails may miss novel attacks or flag legitimate requests.
+- Token security depends on secret management, correct verification, and safe nonce handling.
+- Compensating actions depend on correctly implemented handlers and cannot reverse every possible external side effect.
+- Use sandbox tools and synthetic data when demonstrating attacks and rollback behavior.
+- Verify that the gateway is running and connected before describing dashboard data as live.
+- Do not expose credentials, private tokens, or sensitive user data in the repository or demonstration.
+
+## Future Improvements
+
+Potential next steps include:
+
+- Broader MCP client and transport interoperability testing
+- More comprehensive policy configuration and evaluation
+- Stronger observability and structured security reporting
+- Expanded integration and adversarial testing
+- Improved deployment guidance and secure configuration management
+- Additional recovery handlers for supported tool workflows
+
+## Contributing
+
+Contributions that improve security, reliability, documentation, and interoperability are welcome. Please avoid including secrets, live tokens, private user data, or exploit details affecting systems outside this project.
+
+## License
+
+Refer to the repository's `LICENSE` file for the project's current licensing terms. Ensure a suitable open-source license is present and visible in the public repository if required for the intended distribution or hackathon challenge.
