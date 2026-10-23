@@ -13,7 +13,7 @@ async function main(): Promise<void> {
 
   if (mode === "http" || mode === "gateway") {
     const port = Number(process.env.PORT) || 3001;
-    const host = process.env.HOST || "127.0.0.1";
+    const host = process.env.HOST || "0.0.0.0";
     await startServer(port, host);
   } else if (mode === "stdio") {
     await startStdioServer();
