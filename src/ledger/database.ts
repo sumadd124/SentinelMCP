@@ -1,26 +1,47 @@
-import { createClient, type Client } from '@libsql/client';
-import path from 'node:path';
-import fs from 'node:fs';
 
-const dbDir = path.resolve(process.cwd(), 'data');
-if (!fs.existsSync(dbDir)) {
+import { createClient, type Client } from "@libsql/client";
+import path from "node:path";
+import fs from "node:fs";
+
+const tursoUrl = process.env.TURSO_DATABASE_URL?.trim();
+const tursoToken = process.env.TURSO_AUTH_TOKEN?.trim();
+
+const useTurso = Boolean(tursoUrl);
+
+if (useTurso && !tursoToken) {
+  throw new Error(
+    "TURSO_AUTH_TOKEN is required when TURSO_DATABASE_URL is set."
+  );
+}
+
+const dbDir = path.resolve(process.cwd(), "data");
+
+if (!useTurso && !fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
 
-const dbPath = path.join(dbDir, 'sentinel_ledger.db');
+const dbPath = path.join(dbDir, "sentinel_ledger.db");
 
-export const client: Client = createClient({
-  url: `file:${dbPath}`,
-});
+export const client: Client = useTurso
+  ? createClient({
+      url: tursoUrl!,
+      authToken: tursoToken!,
+    })
+  : createClient({
+      url: `file:${dbPath}`,
+    });
 
 export const db: Client = client;
 
 export async function runMigrations(): Promise<void> {
-  await client.execute('PRAGMA journal_mode = WAL;');
-  await client.execute('PRAGMA busy_timeout = 5000;');
-  await client.execute('PRAGMA synchronous = NORMAL;');
+  // These PRAGMA settings apply only to local SQLite.
+  if (!useTurso) {
+    await client.execute("PRAGMA journal_mode = WAL;");
+    await client.execute("PRAGMA busy_timeout = 5000;");
+    await client.execute("PRAGMA synchronous = NORMAL;");
+  }
 
-    await client.execute(`
+  await client.execute(`
     CREATE TABLE IF NOT EXISTS mock_accounts (
       account_id TEXT PRIMARY KEY,
       balance REAL NOT NULL
@@ -32,7 +53,7 @@ export async function runMigrations(): Promise<void> {
     VALUES ('ACC_1001', 1000.0), ('ACC_2002', 200.0);
   `);
 
-  // Nonces table for HMAC capability replay prevention
+  // Nonces table for HMAC capability replay prevention.
   await client.execute(`
     CREATE TABLE IF NOT EXISTS nonces (
       nonce TEXT PRIMARY KEY,
@@ -41,7 +62,7 @@ export async function runMigrations(): Promise<void> {
     );
   `);
 
-  // Saga transactions ledger table
+  // Saga transactions ledger table.
   await client.execute(`
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
@@ -53,14 +74,7 @@ export async function runMigrations(): Promise<void> {
     );
   `);
 
-  try {
-    await client.execute(`ALTER TABLE transactions ADD COLUMN initiator TEXT;`);
-  } catch {}
-  try {
-    await client.execute(`ALTER TABLE transactions ADD COLUMN client_id TEXT;`);
-  } catch {}
-
-  // Step log & snapshot records for reverse compensation
+  // Step log and snapshot records for reverse compensation.
   await client.execute(`
     CREATE TABLE IF NOT EXISTS transaction_steps (
       id TEXT PRIMARY KEY,
@@ -76,14 +90,7 @@ export async function runMigrations(): Promise<void> {
     );
   `);
 
-  try {
-    await client.execute(`ALTER TABLE transaction_steps ADD COLUMN step_order INTEGER DEFAULT 1;`);
-  } catch {}
-  try {
-    await client.execute(`ALTER TABLE transaction_steps ADD COLUMN compensation_payload TEXT;`);
-  } catch {}
-
-  // Application records table used by sandbox tools
+  // Application records table used by sandbox tools.
   await client.execute(`
     CREATE TABLE IF NOT EXISTS records (
       id TEXT PRIMARY KEY,
@@ -92,7 +99,7 @@ export async function runMigrations(): Promise<void> {
     );
   `);
 
-  // Audit events table for Guardrail & Policy inspection history
+  // Audit events table for Guardrail and Policy inspection history.
   await client.execute(`
     CREATE TABLE IF NOT EXISTS audit_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,6 +110,40 @@ export async function runMigrations(): Promise<void> {
       timestamp TEXT NOT NULL
     );
   `);
+
+  // Backward-compatible migrations for existing local databases
+  // and databases created by earlier versions.
+  try {
+    await client.execute(
+      "ALTER TABLE transactions ADD COLUMN initiator TEXT;"
+    );
+  } catch {
+    // Column already exists.
+  }
+
+  try {
+    await client.execute(
+      "ALTER TABLE transactions ADD COLUMN client_id TEXT;"
+    );
+  } catch {
+    // Column already exists.
+  }
+
+  try {
+    await client.execute(
+      "ALTER TABLE transaction_steps ADD COLUMN step_order INTEGER DEFAULT 1;"
+    );
+  } catch {
+    // Column already exists.
+  }
+
+  try {
+    await client.execute(
+      "ALTER TABLE transaction_steps ADD COLUMN compensation_payload TEXT;"
+    );
+  } catch {
+    // Column already exists.
+  }
 }
 
 export async function getDatabase(): Promise<Client> {

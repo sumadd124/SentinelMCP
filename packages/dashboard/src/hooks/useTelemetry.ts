@@ -17,7 +17,7 @@ import type {
 
 export function getGatewayBaseUrl(): string {
   const rawUrl =
-    process.env.NEXT_PUBLIC_GATEWAY_URL?.trim() || "http://127.0.0.1:3001";
+  process.env.NEXT_PUBLIC_GATEWAY_URL?.trim() || "";
   return rawUrl.replace(/\/sse\/?$/, "").replace(/\/+$/, "");
 }
 

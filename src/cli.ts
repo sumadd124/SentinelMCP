@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "dotenv/config";
 import { startServer } from "./index.js";
 import { startStdioServer } from "./transports/stdio.js";
 import { runMigrations } from "./ledger/database.js";
